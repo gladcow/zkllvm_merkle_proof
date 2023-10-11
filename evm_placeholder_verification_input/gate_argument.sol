@@ -24,9 +24,11 @@ import "../../../contracts/basic_marshalling.sol";
 import "../../../contracts/commitments/batched_lpc_verifier.sol";
 import "../../../contracts/interfaces/gate_argument.sol";
 
+import "./gate0.sol";
+import "./gate4.sol";
 
 
-contract merkle_proof_gate_argument_split_gen  is IGateArgument{
+contract template_gate_argument_split_gen  is IGateArgument{
     uint256 constant GATES_N = 13;
 
     struct local_vars_type{
@@ -42,6 +44,8 @@ contract merkle_proof_gate_argument_split_gen  is IGateArgument{
 		//0x80
 		uint256[][] witness_evaluations;
 		//a0
+		uint256[] constant_evaluations;
+		//c0
 		uint256[] selector_evaluations;
 
     }
@@ -54,5 +58,46 @@ contract merkle_proof_gate_argument_split_gen  is IGateArgument{
         types.arithmetization_params memory ar_params,
         int256[][] calldata columns_rotations
     ) external pure returns (uint256 gates_evaluation) {
+        local_vars_type memory local_vars;
+
+
+        local_vars.witness_evaluations = new uint256[][](ar_params.witness_columns);
+        for (uint256 i = 0; i < ar_params.witness_columns;) {
+            local_vars.witness_evaluations[i] = new uint256[](columns_rotations[i].length);
+            for (uint256 j = 0; j < columns_rotations[i].length;) {
+                local_vars.witness_evaluations[i][j] = batched_lpc_verifier.get_variable_values_z_i_j_from_proof_be(
+                    blob, eval_proof_combined_value_offset, i, j
+                );
+                unchecked{j++;}
+            }
+            unchecked{i++;}
+        }
+
+        local_vars.constant_evaluations = new uint256[](ar_params.constant_columns);
+        for (uint256 i = 0; i < ar_params.constant_columns;) {
+            local_vars.constant_evaluations[i] = batched_lpc_verifier.get_fixed_values_z_i_j_from_proof_be(
+                blob, eval_proof_combined_value_offset, ar_params.permutation_columns + ar_params.permutation_columns + i, 0
+            );
+ 
+            unchecked{i++;}
+        }
+
+        local_vars.selector_evaluations = new uint256[](ar_params.selector_columns);
+        for (uint256 i = 0; i < ar_params.selector_columns;) {
+            local_vars.selector_evaluations[i] = batched_lpc_verifier.get_fixed_values_z_i_j_from_proof_be(
+                blob, eval_proof_combined_value_offset, ar_params.permutation_columns + ar_params.permutation_columns + ar_params.constant_columns + i, 0
+            );
+            unchecked{i++;}
+        }
+
+
+        local_vars.theta_acc = 1;
+        local_vars.gates_evaluation = 0;
+
+		(local_vars.gates_evaluation, local_vars.theta_acc) = template_gate0.evaluate_gate_be(gate_params, local_vars);
+		(local_vars.gates_evaluation, local_vars.theta_acc) = template_gate4.evaluate_gate_be(gate_params, local_vars);
+
+
+        gates_evaluation = local_vars.gates_evaluation;
     }
 }
